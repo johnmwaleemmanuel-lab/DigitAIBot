@@ -57,6 +57,19 @@ connectDerivBtn.addEventListener('click', () => {
   window.location.href = '/auth/deriv/login';
 });
 
+// Surface OAuth failures (state mismatch, denied consent, token exchange
+// errors) that the server redirects back to us as ?authError=...
+(function reportAuthErrorFromRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  const authError = params.get('authError');
+  if (authError) {
+    addFeedItem(`Deriv login failed: ${authError}`, 'error');
+    params.delete('authError');
+    const clean = window.location.pathname + (params.toString() ? `?${params}` : '');
+    window.history.replaceState({}, '', clean);
+  }
+})();
+
 logoutBtn.addEventListener('click', async () => {
   logoutBtn.disabled = true;
   logoutBtn.textContent = 'Logging out…';

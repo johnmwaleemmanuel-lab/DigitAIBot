@@ -5,6 +5,8 @@ const http = require('http');
 const path = require('path');
 const { Server } = require('socket.io');
 const fs = require('fs');
+const crypto = require('crypto');
+const https = require('https');
 
 const BotController = require('./engine/BotController');
 const SessionStore = require('./engine/SessionStore');
@@ -57,46 +59,158 @@ bot.on('sessionConfirmed', ({ accountId, accountType }) => {
 });
 
 // =====================================================================
-// Deriv OAuth flow
+// Deriv OAuth 2.0 flow — Authorization Code + PKCE
+// (per Deriv's OAuth 2.0 guide: auth.deriv.com/oauth2/auth + /oauth2/token)
 //
 // IMPORTANT one-time setup (outside this code, on Deriv's side): the
 // app registered under appId (config.json -> deriv.appId) must have its
-// "Redirect URL" set, in Deriv's app management dashboard, to:
-//   http://localhost:<PORT>/auth/deriv/callback
-// Deriv's OAuth implementation redirects back to whatever URL was
-// configured there — it is not passed as a query parameter here — so
-// this bot cannot fully automate that one registration step.
+// "Redirect URL" set, in Deriv's app management dashboard, to exactly:
+//   REDIRECT_URI (see below)
 // =====================================================================
 
-app.get('/auth/deriv/login', (req, res) => {
-  const authorizeUrl = `https://oauth.deriv.com/oauth2/authorize?app_id=${encodeURIComponent(
-    cfg.deriv.appId
-  )}`;
-  res.redirect(authorizeUrl);
-});
+const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
+const REDIRECT_URI = `${PUBLIC_URL}/auth/deriv/callback`;
 
-// Deriv redirects the browser here with ?acct1=...&token1=...&cur1=...
-// (and acct2/token2/cur2, etc. if the user has multiple Deriv accounts).
-// The actual parsing + account picking happens client-side in this page.
-app.get('/auth/deriv/callback', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'oauth-callback.html'));
-});
+// Holds in-flight PKCE code_verifier + state pairs while the user is on
+// Deriv's site authenticating. Server-side equivalent of the browser's
+// sessionStorage — a Node backend has no per-tab storage, and this is a
+// single-user local bot, so an in-memory Map keyed by `state` is enough.
+// Entries are single-use (deleted on callback) and expire after 10 minutes
+// in case the user abandons the flow.
+const pkceStore = new Map();
+const PKCE_TTL_MS = 10 * 60 * 1000;
 
-// Called by oauth-callback.html once the user has picked which Deriv
-// account to use (or automatically, if only one was returned).
-app.post('/auth/deriv/session', (req, res) => {
-  const { accountId, token, accountType } = req.body || {};
-  if (!accountId || !token) {
-    return res.status(400).json({ ok: false, error: 'Missing accountId or token' });
+function base64url(buf) {
+  return buf
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+function beginPkceFlow() {
+  const codeVerifier = base64url(crypto.randomBytes(64));
+  const codeChallenge = base64url(crypto.createHash('sha256').update(codeVerifier).digest());
+  const state = crypto.randomBytes(16).toString('hex');
+  pkceStore.set(state, { codeVerifier, createdAt: Date.now() });
+  // Opportunistic cleanup of stale/abandoned attempts.
+  for (const [key, val] of pkceStore) {
+    if (Date.now() - val.createdAt > PKCE_TTL_MS) pkceStore.delete(key);
   }
-  sessionStore.save({ accountId, token, accountType: accountType || 'unknown' });
-  bot.applyCredentials({
-    appId: cfg.deriv.appId,
-    apiToken: token,
-    accountId,
-    accountType: accountType || 'unknown',
+  return { codeVerifier, codeChallenge, state };
+}
+
+function buildAuthorizeUrl({ codeChallenge, state, signup }) {
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: cfg.deriv.appId,
+    redirect_uri: REDIRECT_URI,
+    scope: 'trade account_manage',
+    state,
+    code_challenge: codeChallenge,
+    code_challenge_method: 'S256',
   });
-  res.json({ ok: true });
+  if (signup) params.set('prompt', 'registration');
+  return `https://auth.deriv.com/oauth2/auth?${params.toString()}`;
+}
+
+// Exchanges an authorization code for an access token. Must happen
+// server-side — never expose this call or its result to the browser.
+function exchangeCodeForToken({ code, codeVerifier }) {
+  return new Promise((resolve, reject) => {
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: cfg.deriv.appId,
+      code,
+      code_verifier: codeVerifier,
+      redirect_uri: REDIRECT_URI,
+    }).toString();
+
+    const req = https.request(
+      'https://auth.deriv.com/oauth2/token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(body),
+        },
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (chunk) => (data += chunk));
+        res.on('end', () => {
+          let parsed;
+          try {
+            parsed = JSON.parse(data);
+          } catch (e) {
+            return reject(new Error('Invalid response from Deriv token endpoint.'));
+          }
+          if (res.statusCode >= 200 && res.statusCode < 300 && parsed.access_token) {
+            resolve(parsed);
+          } else {
+            reject(new Error(parsed.error_description || parsed.error || 'Token exchange failed.'));
+          }
+        });
+      }
+    );
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+app.get('/auth/deriv/login', (req, res) => {
+  const { codeChallenge, state } = beginPkceFlow();
+  res.redirect(buildAuthorizeUrl({ codeChallenge, state, signup: false }));
+});
+
+app.get('/auth/deriv/signup', (req, res) => {
+  const { codeChallenge, state } = beginPkceFlow();
+  res.redirect(buildAuthorizeUrl({ codeChallenge, state, signup: true }));
+});
+
+// Deriv redirects the browser here with ?code=...&state=... on success,
+// or ?error=...&error_description=... if the user cancelled/denied.
+app.get('/auth/deriv/callback', async (req, res) => {
+  const { code, state, error, error_description: errorDescription } = req.query;
+
+  if (error) {
+    return res.redirect(`/?authError=${encodeURIComponent(errorDescription || error)}`);
+  }
+  if (!code || !state) {
+    return res.redirect(`/?authError=${encodeURIComponent('Missing code or state in redirect.')}`);
+  }
+
+  const pending = pkceStore.get(state);
+  pkceStore.delete(state); // single-use, whether or not it matches
+  if (!pending) {
+    return res.redirect(
+      `/?authError=${encodeURIComponent('State mismatch or expired login attempt — please try again.')}`
+    );
+  }
+
+  try {
+    const { access_token: accessToken } = await exchangeCodeForToken({
+      code,
+      codeVerifier: pending.codeVerifier,
+    });
+
+    // The token exchange only gives us an access_token — no account id or
+    // account type. Those come back from the Deriv WebSocket `authorize`
+    // call, which BotController already performs and reconciles via the
+    // 'sessionConfirmed' event (see the bot.on('sessionConfirmed', ...)
+    // handler above), so we persist a minimal session for now.
+    sessionStore.save({ accountId: null, token: accessToken, accountType: null });
+    bot.applyCredentials({
+      appId: cfg.deriv.appId,
+      apiToken: accessToken,
+      accountId: null,
+      accountType: 'unknown',
+    });
+    res.redirect('/');
+  } catch (e) {
+    res.redirect(`/?authError=${encodeURIComponent(e.message)}`);
+  }
 });
 
 app.post('/auth/deriv/logout', (req, res) => {
@@ -158,8 +272,7 @@ if (existingSession) {
 }
 
 server.listen(PORT, () => {
-  const publicUrl = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
   console.log(`Deriv Digit Bot dashboard running on port ${PORT}`);
-  console.log(`Public URL: ${publicUrl}`);
-  console.log(`Deriv OAuth redirect URL that must be registered on Deriv: ${publicUrl}/auth/deriv/callback`);
+  console.log(`Public URL: ${PUBLIC_URL}`);
+  console.log(`Deriv OAuth redirect URL that must be registered on Deriv: ${REDIRECT_URI}`);
 });
