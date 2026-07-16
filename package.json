@@ -1,0 +1,15 @@
+{
+  "name": "deriv-digit-bot",
+  "version": "1.0.0",
+  "description": "Automation-ready Deriv digit trading bot: Over/Under, Even-Odd, Reverse Psychology strategies with AI Mode confidence scoring, Martingale recovery, and a live animated dashboard.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.8.1",
+    "ws": "^8.18.0"
+  }
+}

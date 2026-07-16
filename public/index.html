@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Deriv Digit AI — Automated Trading Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="bg-grid"></div>
+<div class="bg-glow"></div>
+<div class="petal-field" id="petalField"></div>
+
+<div class="app">
+
+  <!-- ===== HEADER ===== -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">
+        <span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span>
+      </div>
+      <div class="brand-text">
+        <h1>DERIV <span class="accent">DIGIT AI</span></h1>
+        <p>Over/Under · Even-Odd · Reverse Psychology — Autonomous Console</p>
+      </div>
+    </div>
+
+    <div class="status-cluster">
+      <div class="status-pill" id="connStatus">
+        <span class="pulse-dot offline" id="connDot"></span>
+        <span id="connText">Connecting…</span>
+      </div>
+      <div class="status-pill account">
+        <span class="account-badge" id="topAccountType">—</span>
+        <span id="accountId">Not connected</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="grid-layout">
+
+    <!-- ===== LEFT: CONTROL PANEL ===== -->
+    <aside class="panel control-panel">
+      <h2 class="panel-title">Control Room</h2>
+
+      <details class="settings-drawer creds-drawer" open>
+        <summary>🔐 Deriv Account</summary>
+
+        <div id="loggedOutView">
+          <p class="creds-hint">Sign in with your Deriv account — no App ID or API token needed.</p>
+          <button class="btn-save" id="connectDerivBtn">🔗 Connect with Deriv</button>
+        </div>
+
+        <div id="loggedInView" style="display:none;">
+          <div class="account-info">
+            <div class="account-row">
+              <span class="metric-label">Account</span>
+              <span class="metric-value" id="acctIdDisplay">—</span>
+            </div>
+            <div class="account-row">
+              <span class="metric-label">Type</span>
+              <span class="account-type-badge" id="acctTypeBadge">—</span>
+            </div>
+            <div class="account-row">
+              <span class="metric-label">Balance</span>
+              <span class="metric-value" id="acctBalanceDisplay">—</span>
+            </div>
+          </div>
+          <button class="btn-logout" id="logoutBtn">🚪 Disconnect / Logout</button>
+        </div>
+      </details>
+
+      <div class="mode-switch">
+        <button class="mode-btn active" data-mode="AI" id="modeAiBtn">
+          <span class="mode-icon">✦</span> AI Mode
+          <small>Full automation, all 4 strategies</small>
+        </button>
+        <button class="mode-btn" data-mode="SINGLE" id="modeSingleBtn">
+          <span class="mode-icon">◎</span> Single Strategy
+          <small>Manual strategy lock</small>
+        </button>
+      </div>
+
+      <div class="single-select" id="singleSelectWrap" style="display:none;">
+        <label>Strategy</label>
+        <select id="singleStrategySelect">
+          <option value="OVER_UNDER">Over / Under</option>
+          <option value="OVER">Over only</option>
+          <option value="UNDER">Under only</option>
+          <option value="EVEN_ODD">Even / Odd</option>
+          <option value="REVERSE_PSYCHOLOGY">Reverse Psychology</option>
+          <option value="OVER_UNDER_2">Over/Under Strategy 2</option>
+        </select>
+      </div>
+
+      <div class="run-controls">
+        <button class="btn-run" id="startBtn">
+          <span class="btn-glow"></span>
+          <span class="btn-label">▶ START BOT</span>
+        </button>
+        <button class="btn-stop" id="stopBtn" disabled>■ EXIT / STOP</button>
+      </div>
+
+      <div class="live-metrics">
+        <div class="metric">
+          <span class="metric-label">Session P/L</span>
+          <span class="metric-value" id="sessionPL">$0.00</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Current Stake</span>
+          <span class="metric-value" id="currentStake">$0.35</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Consecutive Losses</span>
+          <span class="metric-value" id="consecLosses">0</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Recovery Mode</span>
+          <span class="metric-value badge-off" id="recoveryBadge">OFF</span>
+        </div>
+      </div>
+
+      <details class="settings-drawer">
+        <summary>⚙ Settings</summary>
+        <div class="settings-grid">
+          <label>Base Stake ($)<input type="number" step="0.01" id="setStake" value="0.35"></label>
+          <label>Martingale ×<input type="number" step="0.1" id="setMartingale" value="2"></label>
+          <label>Target Profit ($)<input type="number" step="0.5" id="setTP" value="5"></label>
+          <label>Target Stop-Loss ($)<input type="number" step="0.5" id="setSL" value="5"></label>
+          <label>Sample Window (ticks)<input type="number" step="50" id="setSample" value="1000"></label>
+          <label>Recovery Loss Trigger<input type="number" step="1" id="setLossTrigger" value="2"></label>
+        </div>
+        <button class="btn-save" id="saveSettingsBtn">Save Settings</button>
+      </details>
+    </aside>
+
+    <!-- ===== CENTER: MARKET SCANNER ===== -->
+    <main class="panel scanner-panel">
+      <div class="panel-header-row">
+        <h2 class="panel-title">Live Market Scanner</h2>
+        <span class="scan-status" id="scanStatus">Idle</span>
+      </div>
+      <div class="market-grid" id="marketGrid"><!-- market cards injected --></div>
+    </main>
+
+    <!-- ===== RIGHT: ACTIVITY FEED ===== -->
+    <aside class="panel feed-panel">
+      <h2 class="panel-title">Activity Feed</h2>
+      <div class="feed" id="feed"></div>
+    </aside>
+
+  </div>
+
+  <!-- ===== TRADE HISTORY (persisted server-side, survives restarts) ===== -->
+  <section class="panel history-panel">
+    <div class="panel-header-row">
+      <h2 class="panel-title">Trade History &amp; Evaluation</h2>
+      <span class="scan-status" id="historyPersistNote">Persisted on server · data/trade_history.jsonl</span>
+    </div>
+
+    <div class="history-stats" id="historyStats">
+      <div class="metric"><span class="metric-label">Total Trades</span><span class="metric-value" id="hTotal">0</span></div>
+      <div class="metric"><span class="metric-label">Win Rate</span><span class="metric-value" id="hWinRate">0%</span></div>
+      <div class="metric"><span class="metric-label">Total P/L</span><span class="metric-value" id="hTotalPL">$0.00</span></div>
+      <div class="metric"><span class="metric-label">Best Strategy</span><span class="metric-value" id="hBestStrategy">—</span></div>
+    </div>
+
+    <div class="history-chart-wrap">
+      <canvas id="plChart" height="120"></canvas>
+    </div>
+
+    <div class="history-table-wrap">
+      <table class="history-table">
+        <thead>
+          <tr><th>Time</th><th>Market</th><th>Strategy</th><th>Confidence</th><th>Stake</th><th>Result</th><th>Profit</th><th>Session P/L</th></tr>
+        </thead>
+        <tbody id="historyTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<template id="marketCardTpl">
+
+  <div class="market-card">
+    <div class="market-card-head">
+      <span class="market-name"></span>
+      <span class="confidence-ring"><svg viewBox="0 0 36 36"><path class="ring-bg" d="M18 2a16 16 0 1 1 0 32 16 16 0 1 1 0-32"/><path class="ring-fg" d="M18 2a16 16 0 1 1 0 32 16 16 0 1 1 0-32"/></svg><span class="confidence-num">0</span></span>
+    </div>
+    <div class="digit-bars"></div>
+    <div class="market-card-foot">
+      <span class="signal-tag none">No signal</span>
+    </div>
+  </div>
+</template>
+
+<!-- ===== FLOATING AI BUTTON ===== -->
+<button class="ai-fab" id="aiFab" title="Launch AI Mode — all strategies live">
+  <span class="ai-fab-ring r1"></span>
+  <span class="ai-fab-ring r2"></span>
+  <span class="ai-fab-ring r3"></span>
+  <span class="ai-fab-core">
+    <span class="ai-fab-glyph">AI</span>
+  </span>
+</button>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+{
+  "deriv": {
+    "appId": "33QtvG4sVV4bjhAR2dqyL",
+    "apiToken": "",
+    "accountId": "",
+    "accountType": "",
+    "currency": "USD"
+  },
+
+  "markets": {
+    "plainVolatility": ["R_10", "R_25", "R_50", "R_75", "R_100"],
+    "secondsVolatility": ["1HZ10V", "1HZ25V", "1HZ50V", "1HZ75V", "1HZ100V"],
+    "jumpIndices": ["JD10", "JD25", "JD50", "JD75", "JD100"]
+  },
+
+  "sampleWindowTicks": 1000,
+
+  "tickDuration": {
+    "plainVolatility": 1,
+    "secondsOrJump_newAccount": 2,
+    "secondsOrJump_oldAccount": 3,
+    "isNewAccount": true,
+    "userOverride": null
+  },
+
+  "threshold": {
+    "losingMax": 10.5,
+    "losingIdeal": 10.0,
+    "winningMin": 10.5,
+    "winningStrong": 11.0
+  },
+
+  "confidenceWeights": {
+    "percentageStrength": 0.5,
+    "barAlignment": 0.3,
+    "strengthCount": 0.2
+  },
+
+  "stake": {
+    "base": 0.35,
+    "martingaleMultiplier": 2,
+    "maxMartingaleSteps": null
+  },
+
+  "risk": {
+    "targetProfit": 5,
+    "targetStopLoss": 5
+  },
+
+  "recovery": {
+    "consecutiveLossThreshold": 2,
+    "recoveryStrategy": "EVEN_ODD"
+  },
+
+  "mode": "AI",
+  "singleStrategy": "OVER_UNDER",
+
+  "excludedDigitsOverUnder": [0, 9],
+
+  "overVariants": [2, 3],
+  "underVariants": [7, 6],
+
+  "scanIntervalMs": 1500
+}
